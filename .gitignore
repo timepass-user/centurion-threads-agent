@@ -2,5 +2,5 @@
 .venv/
 __pycache__/
 *.pyc
-state.sqlite
 .DS_Store
+scripts/.certs/
