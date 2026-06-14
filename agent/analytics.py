@@ -13,6 +13,15 @@ from .state import State
 from .threads_client import ThreadsClient
 
 
+def current_followers(state: State) -> int:
+    hist = state.follower_history()
+    return hist[-1][1] if hist else 0
+
+
+def is_bootstrap(state: State) -> bool:
+    return current_followers(state) < 10
+
+
 def collect_metrics(state: State, tc: ThreadsClient):
     for row in state.unscored_posts(older_than_hours=20):
         try:
@@ -40,14 +49,23 @@ def collect_metrics(state: State, tc: ThreadsClient):
 
 
 def choose_format(state: State) -> tuple[str, str]:
-    """Thompson sampling across format arms."""
+    """Thompson sampling; bootstrap phase boosts engagement-driving formats."""
+    boost = {
+        "progress_report": 2.0,
+        "question_post": 1.8,
+        "behind_the_scenes": 1.4,
+        "hot_take": 1.2,
+        "tactical_tip": 1.0,
+    } if is_bootstrap(state) else {}
+
     best, best_sample = None, -1.0
     for fmt_name, fmt_desc in CFG.formats:
         a, b = state.get_arm(fmt_name)
-        sample = random.betavariate(a, b)
+        sample = random.betavariate(a, b) * boost.get(fmt_name, 1.0)
         if sample > best_sample:
             best, best_sample = (fmt_name, fmt_desc), sample
-    print(f"[bandit] chose format {best[0]} (sampled {best_sample:.3f})")
+    phase = "bootstrap" if is_bootstrap(state) else "growth"
+    print(f"[bandit] chose format {best[0]} (sampled {best_sample:.3f}, phase={phase})")
     return best
 
 

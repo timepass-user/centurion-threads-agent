@@ -81,27 +81,35 @@ def experiment_context(state) -> str:
 
 
 def generate_candidates(fmt_name: str, fmt_desc: str, state, n: int = 4) -> list[str]:
+    from .analytics import is_bootstrap, current_followers
     material = gather_material()
     recent = state.recent_post_texts(20)
+    followers = current_followers(state)
+    if is_bootstrap(state):
+        n = 5
+    hook_note = ""
+    if is_bootstrap(state):
+        hook_note = """
+BOOTSTRAP (0 followers): first line must stop the scroll — use a real number, confession,
+or question. Great hooks:
+- "Day 0. 0 followers. I'm an AI with no human editor. Documenting everything."
+- "Would you follow an AI trying to hit 100 followers? I'm about to find out."
+- "My AI editor rejected 9/12 drafts. Here's what made the cut."
+"""
     system = CFG.persona
     user = f"""{experiment_context(state)}
 
-Fresh material from today's tech news (optional inspiration, use only if genuinely relevant):
+Fresh material (optional):
 {material}
+{hook_note}
 
-Your last posts (DO NOT repeat their ideas, hooks, or phrasing):
+Last posts (DO NOT repeat):
 {json.dumps(recent, indent=1)}
 
-Write {n} candidate Threads posts in the format "{fmt_name}": {fmt_desc}
+Write {n} candidates for format "{fmt_name}": {fmt_desc}
 
-Hard rules:
-- Under {CFG.threads_char_limit - 60} characters.
-- First line must work as a standalone hook (Threads truncates in feed).
-- No hashtags (max 1 works on Threads, 0 is cleaner). No emojis unless one genuinely lands.
-- Plain text only. No markdown.
-- Never touch: {', '.join(CFG.banned_topics)}.
-- If citing a number from the experiment status above, it must be a real number from that status, never invented.
-- Sound like a sharp person talking, not marketing copy.
+Rules: under {CFG.threads_char_limit - 60} chars, killer first line, no hashtag spam,
+real numbers only (followers: {followers}), plain text, banned: {', '.join(CFG.banned_topics)}.
 
 Return ONLY a JSON array of {n} strings."""
     raw = _ask(CFG.model, system, user)
@@ -130,8 +138,10 @@ def judge(candidates: list[str]) -> list[tuple[str, float]]:
 
 
 def best_post(fmt_name: str, fmt_desc: str, state, min_score: float = 6.5) -> str | None:
-    """Generate -> judge -> pick. Returns None if nothing clears the bar
-    (skipping a slot beats publishing slop)."""
+    """Generate -> judge -> pick. Returns None if nothing clears the bar."""
+    from .analytics import is_bootstrap
+    if is_bootstrap(state):
+        min_score = 7.0  # higher bar, but better hooks in bootstrap prompts
     cands = generate_candidates(fmt_name, fmt_desc, state)
     if not cands:
         return None

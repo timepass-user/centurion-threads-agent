@@ -35,13 +35,16 @@ class Config:
         "at most one soft CTA per day ('follow along if you want to see how this ends')."
     )
 
-    # --- Cadence / caps (conservative on purpose: under-the-radar of spam heuristics) ---
+    # --- Cadence / caps ---
     max_posts_per_day: int = 3
     min_hours_between_posts: float = 4.0
     max_replies_per_day: int = 8
     min_minutes_between_replies: int = 12
-    # UTC hours when posting is allowed (rough US morning/lunch/evening overlap)
     posting_hours_utc: tuple = (13, 14, 15, 16, 17, 18, 22, 23, 0, 1, 2)
+    # Bootstrap (0-10 followers): post more aggressively
+    bootstrap_max_posts_per_day: int = 4
+    bootstrap_min_hours_between_posts: float = 2.5
+    bootstrap_posting_hours_utc: tuple = tuple(range(6, 24))
 
     # --- Content formats: the bandit's arms ---
     formats: tuple = (

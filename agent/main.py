@@ -20,15 +20,26 @@ from .threads_client import ThreadsClient
 from . import analytics, brain, engage
 
 
+def _posting_limits(state: State) -> tuple[tuple, int, float]:
+    if analytics.is_bootstrap(state):
+        return (
+            CFG.bootstrap_posting_hours_utc,
+            CFG.bootstrap_max_posts_per_day,
+            CFG.bootstrap_min_hours_between_posts,
+        )
+    return CFG.posting_hours_utc, CFG.max_posts_per_day, CFG.min_hours_between_posts
+
+
 def _should_post(state: State) -> bool:
+    hours, max_day, min_gap = _posting_limits(state)
     now_hour = datetime.now(timezone.utc).hour
-    if now_hour not in CFG.posting_hours_utc:
+    if now_hour not in hours:
         print(f"[main] hour {now_hour} UTC outside posting window")
         return False
-    if state.posts_in_last(24) >= CFG.max_posts_per_day:
+    if state.posts_in_last(24) >= max_day:
         print("[main] daily post cap reached")
         return False
-    if time.time() - state.last_post_time() < CFG.min_hours_between_posts * 3600:
+    if time.time() - state.last_post_time() < min_gap * 3600:
         print("[main] too soon since last post")
         return False
     return True
