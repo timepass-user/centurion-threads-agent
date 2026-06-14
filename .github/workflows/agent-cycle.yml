@@ -1,0 +1,46 @@
+name: agent-cycle
+
+on:
+  schedule:
+    - cron: "17 */2 * * *"   # every 2 hours; agent decides internally what to do
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "cycle | post | engage | collect | status"
+        default: "cycle"
+
+concurrency:
+  group: agent
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Run agent
+        env:
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python -m agent.main ${{ github.event.inputs.mode || 'cycle' }}
+
+      - name: Persist state (the agent's memory)
+        run: |
+          git config user.name "centurion-agent"
+          git config user.email "agent@users.noreply.github.com"
+          git pull --rebase origin main || true
+          git add state.sqlite || true
+          git diff --cached --quiet || git commit -m "state: $(date -u +%FT%TZ)"
+          git push

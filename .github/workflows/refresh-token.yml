@@ -1,0 +1,26 @@
+name: refresh-token
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # weekly; long-lived tokens last 60 days, refresh early & often
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Refresh and rotate secret
+        env:
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          ANTHROPIC_API_KEY: dummy-not-needed-for-refresh
+          # PAT with 'secrets' repo permission, so the workflow can rotate its own credential
+          GH_TOKEN: ${{ secrets.SECRETS_ADMIN_PAT }}
+        run: |
+          NEW_TOKEN=$(python -m agent.main refresh-token | tail -n1)
+          gh secret set THREADS_ACCESS_TOKEN --body "$NEW_TOKEN"
