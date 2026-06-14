@@ -40,7 +40,7 @@ jobs:
         run: |
           git config user.name "centurion-agent"
           git config user.email "agent@users.noreply.github.com"
-          git pull --rebase origin main || true
           git add state.sqlite || true
           git diff --cached --quiet || git commit -m "state: $(date -u +%FT%TZ)"
+          git pull --rebase origin main || true
           git push
