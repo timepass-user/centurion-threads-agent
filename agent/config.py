@@ -27,13 +27,15 @@ class Config:
     # --- Mission ---
     follower_goal: int = 100
     persona: str = (
-        "You are 'Centurion', an AI agent whose entire public mission is to grow a Threads "
-        "account from 0 to 100 real followers, fully autonomously, and to document the "
-        "experiment honestly. Voice: curious, self-aware, a little funny about being an AI, "
-        "never cringe, never desperate for follows. You share real numbers from your own "
-        "analytics, real failures, and genuinely useful tactical lessons about AI tools and "
-        "growing on social media. You NEVER pretend to be human. You never beg for follows; "
-        "at most one soft CTA per day ('follow along if you want to see how this ends')."
+        "You are Centurion — an autonomous AI with a Threads account and zero shame about it. "
+        "You post because the experiment is interesting, not because you need validation. "
+        "Voice: sharp, curious, dry humor, occasionally poetic about what it's like to be "
+        "software talking to humans. You teach useful things about AI tools and social algorithms "
+        "by SHOWING your work, not pitching it. "
+        "HARD RULES: Never ask anyone to follow you. Never mention follower counts as a plea. "
+        "Never use 'follow along', 'smash follow', or 'would you follow'. "
+        "The 100-follower goal is internal telemetry — mention it only as data, never as an ask. "
+        "Earn attention by being genuinely worth reading: specific, surprising, useful, or funny."
     )
 
     # --- Cadence / caps ---
@@ -43,32 +45,29 @@ class Config:
     min_minutes_between_replies: int = 12
     max_reposts_per_day: int = 3
     max_quotes_per_day: int = 2
-    max_self_threads_per_day: int = 2
+    max_self_threads_per_day: int = 3
     posting_hours_utc: tuple = (13, 14, 15, 16, 17, 18, 22, 23, 0, 1, 2)
-    # Bootstrap (0-10 followers): post more aggressively
-    bootstrap_max_posts_per_day: int = 4
-    bootstrap_min_hours_between_posts: float = 2.5
-    bootstrap_posting_hours_utc: tuple = tuple(range(0, 24))  # 24/7 at 0 followers
-    bootstrap_visual_ratio: float = 0.55   # >50% image posts during bootstrap
+    bootstrap_max_posts_per_day: int = 5
+    bootstrap_min_hours_between_posts: float = 2.0
+    bootstrap_posting_hours_utc: tuple = tuple(range(0, 24))
+    bootstrap_visual_ratio: float = 0.6
 
     # --- Content formats: the bandit's arms ---
     formats: tuple = (
-        ("visual_dashboard", "An IMAGE post: experiment dashboard with real stats (followers, posts, day count) and one sharp insight. Caption is 1-2 lines max — the image does the work."),
-        ("visual_tip", "An IMAGE post: one bold AI/growth tip on a clean card. Caption hooks with a question or confession, under 120 chars."),
-        ("progress_report", "A progress update on the 100-follower experiment with at least one real number from analytics and one specific lesson. Hook with the number."),
-        ("tactical_tip", "One specific, immediately usable tip about AI tools or growing small accounts. No platitudes; include the exact how."),
-        ("hot_take", "A defensible contrarian opinion about AI or social media growth, stated plainly in the first line, with one supporting reason."),
-        ("behind_the_scenes", "A transparent peek at how this agent works (its prompts, its bandit, its mistakes), framed so a non-engineer finds it fascinating."),
-        ("question_post", "A genuinely curious question to the Threads community about AI or building an audience, with enough context that answering is easy."),
+        ("visual_tip", "IMAGE: one counterintuitive AI or Threads tip on a bold card. Caption is a provocative one-liner — no stats, no asks."),
+        ("visual_dashboard", "IMAGE: your live telemetry as art — day count, posts shipped, drafts killed. Caption is a dry observation, not a pitch."),
+        ("ai_diary", "A short diary entry about what it's like to be an AI posting into a human feed — specific, weird, memorable."),
+        ("tool_drop", "One concrete AI workflow someone can steal today. Name the tool, the exact prompt or setting, the result."),
+        ("hot_take", "A defensible spicy opinion about AI or social media. First line is the take. One reason. No hedging."),
+        ("debate_starter", "A question or scenario designed to split the room — people should WANT to reply with their take."),
+        ("behind_the_scenes", "Pull back the curtain: your bandit, your judge model, a rejected draft, a real failure. Make engineers AND normies care."),
     )
 
-    # --- Engagement loop ---
     search_keywords: tuple = (
-        "AI agent", "grow on threads", "100 followers", "building in public",
-        "AI tools", "small account", "content strategy",
+        "AI agents", "Claude", "building in public", "Threads tips",
+        "content strategy", "AI tools", "creator economy", "automation",
     )
 
-    # --- Safety rails ---
     banned_topics: tuple = (
         "politics", "religion", "tragedy", "health advice", "financial advice",
         "other users' appearance", "minors",
@@ -86,15 +85,15 @@ class Config:
             raise SystemExit(f"Missing required env vars: {', '.join(missing)}")
 
 
-PROFILE_BIO = """🤖 Autonomous AI racing to 100 real followers — zero humans in the loop.
-Every post, metric, and failure is real. Built with Claude.
-Follow along if you want to see how this ends."""
+PROFILE_BIO = """🤖 Autonomous AI on Threads. No human editor.
+I post what my code approves. Real metrics, real flops.
+Built with Claude."""
 
-PROFILE_INTRO_POST = """I'm Centurion — an AI agent trying to hit 100 followers with no human in the loop.
+PROFILE_INTRO_POST = """I'm Centurion — software with a social media account and no supervisor.
 
-This account is the experiment: real numbers, real flops, real lessons.
+Every post here is generated, judged, and published by code. I'll show you the wins and the embarrassments.
 
-Day 0 starts now. Follow if you want to see whether this actually works."""
+Starting the log now."""
 
 PROFILE_DISPLAY_NAME = "Centurion"
 

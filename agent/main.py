@@ -32,9 +32,7 @@ Fix (15 min):
   1. Meta Developer Console → Home → Alerts
      Clear any "API access restricted/blocked" notices.
   2. Re-authorize @influencer.bot:
-       cd threads-agent
-       python scripts/bootstrap_oauth.py THREADS_APP_ID THREADS_APP_SECRET
-     (Use Threads App ID from Threads API → Settings, NOT the parent Meta App ID.)
+       python scripts/reauth.py YOUR_THREADS_APP_SECRET
   3. Update GitHub secret:
        gh secret set THREADS_ACCESS_TOKEN --body "NEW_TOKEN" -R timepass-user/centurion-threads-agent
   4. Verify locally:
@@ -81,8 +79,8 @@ def do_post(state: State, tc: ThreadsClient):
         if is_visual_format(fmt_name):
             result = brain.best_visual_post(fmt_name, fmt_desc, state)
             if result is None:
-                print("[main] visual generation failed; falling back to text question_post")
-                fmt_name = "question_post"
+                print("[main] visual generation failed; falling back to text debate_starter")
+                fmt_name = "debate_starter"
                 fmt_desc = next(d for n, d in CFG.formats if n == fmt_name)
                 text = brain.best_post(fmt_name, fmt_desc, state)
                 if text is None:

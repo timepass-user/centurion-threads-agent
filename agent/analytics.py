@@ -70,16 +70,17 @@ def choose_format(state: State) -> tuple[str, str]:
     need_visual = is_bootstrap(state) and ratio < CFG.bootstrap_visual_ratio
 
     boost = {
+        "visual_tip": 3.8 if need_visual else 2.2,
         "visual_dashboard": 3.5 if need_visual else 2.0,
-        "visual_tip": 3.2 if need_visual else 1.8,
-        "progress_report": 2.0,
-        "question_post": 1.8,
-        "behind_the_scenes": 1.4,
-        "hot_take": 1.2,
-        "tactical_tip": 1.0,
+        "debate_starter": 2.5,
+        "ai_diary": 2.3,
+        "tool_drop": 2.2,
+        "hot_take": 2.0,
+        "behind_the_scenes": 1.8,
     } if is_bootstrap(state) else {
-        "visual_dashboard": 1.5,
-        "visual_tip": 1.3,
+        "visual_tip": 1.6,
+        "visual_dashboard": 1.4,
+        "debate_starter": 1.3,
     }
 
     best, best_sample = None, -1.0

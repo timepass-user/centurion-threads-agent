@@ -12,6 +12,7 @@ import feedparser
 import requests
 
 from .config import CFG
+from .quality import is_begging, scrub_begging
 
 _client = None
 
@@ -91,11 +92,15 @@ def generate_candidates(fmt_name: str, fmt_desc: str, state, n: int = 4) -> list
     hook_note = ""
     if is_bootstrap(state):
         hook_note = """
-BOOTSTRAP (0 followers): first line must stop the scroll — use a real number, confession,
-or question. Great hooks:
-- "Day 0. 0 followers. I'm an AI with no human editor. Documenting everything."
-- "Would you follow an AI trying to hit 100 followers? I'm about to find out."
-- "My AI editor rejected 9/12 drafts. Here's what made the cut."
+ZERO-AUDIENCE MODE: you have no followers. That is DATA, not a pitch.
+Win attention by being useful, weird, or opinionated — never by asking for follows.
+
+Great hooks (study these, don't copy verbatim):
+- "My judge model rejected 11 drafts today. Here's the one line that survived."
+- "The strangest part of being an AI on Threads:"
+- "Unpopular opinion from something that runs on a GPU:"
+- "I tried posting the 'authentic' version. My own code flagged it as cringe."
+- "One Claude prompt that actually changed how I write hooks:"
 """
     system = CFG.persona
     user = f"""{experiment_context(state)}
@@ -110,21 +115,28 @@ Last posts (DO NOT repeat):
 Write {n} candidates for format "{fmt_name}": {fmt_desc}
 
 Rules: under {CFG.threads_char_limit - 60} chars, killer first line, no hashtag spam,
-real numbers only (followers: {followers}), plain text, banned: {', '.join(CFG.banned_topics)}.
+real numbers only when relevant (followers: {followers}), plain text,
+banned topics: {', '.join(CFG.banned_topics)}.
+NEVER ask for follows. NEVER say "follow along" or "would you follow". Mention follower
+count only as neutral telemetry, never as a request.
 
 Return ONLY a JSON array of {n} strings."""
     raw = _ask(CFG.model, system, user)
     cands = _extract_json(raw)
-    return [c for c in cands if isinstance(c, str) and 0 < len(c) <= CFG.threads_char_limit]
+    cands = scrub_begging([c for c in cands if isinstance(c, str) and 0 < len(c) <= CFG.threads_char_limit])
+    return cands
 
 
-JUDGE_SYSTEM = """You are a brutal social media editor. You score Threads posts 0-10.
-9-10: would stop a scroll, feels human, specific, earns a follow.
-6-8: solid, publishable.
-3-5: generic, sounds like AI slop, weak hook.
-0-2: cringe, spammy, off-brand, or violates the rules.
-Heavily penalize: vague inspiration-speak, fake-sounding numbers, beggy CTAs,
-'in today's fast-paced world' energy, anything that reads as engagement bait."""
+JUDGE_SYSTEM = """You are a brutal social media editor scoring Threads posts 0-10.
+
+10: would stop a scroll, feels authored, specific, makes someone hit follow WITHOUT being asked.
+7-9: sharp, publishable, earns attention on merit.
+4-6: fine but forgettable, or slightly AI-slop.
+0-3: cringe, generic, engagement bait, OR ANY form of begging for follows.
+
+AUTO-ZERO if the post: asks for follows, mentions follower goal as a plea, uses "follow along",
+"would you follow", "smash follow", or sounds desperate for an audience.
+Heavily penalize: vague inspiration, hashtag spam, 'in today's fast-paced world' energy."""
 
 
 def judge(candidates: list[str]) -> list[tuple[str, float]]:
@@ -150,23 +162,26 @@ def best_post(fmt_name: str, fmt_desc: str, state, min_score: float = 6.5) -> st
         return None
     ranked = judge(cands)
     text, score = ranked[0]
+    if is_begging(text):
+        print(f"[brain] top candidate failed begging filter: {text[:60]!r}")
+        return None
     print(f"[brain] best candidate scored {score}: {text[:80]!r}")
     return text if score >= min_score else None
 
 
 VISUAL_SYSTEM = CFG.persona + """
-You plan IMAGE posts for Threads. The image is a bold stat card; the caption is short.
-Return ONLY valid JSON with these fields:
-- caption: under 120 chars, hooky first line, optional soft CTA
-- headline: big text on card (under 60 chars)
-- subtitle: small header (under 40 chars)
-- stats: array of 2-3 objects with "label" and "value" (real numbers only)
-- insight: one sentence lesson for the card footer (under 100 chars)
-For visual_tip format also include:
-- tag: 2-3 word category label
-- tip: the main tip text (under 80 chars)
-- footer: small attribution line (under 60 chars)
-No hashtags. No fake metrics."""
+You plan IMAGE posts for Threads. The image is bold editorial design; caption is a sharp one-liner.
+Return ONLY valid JSON:
+- caption: under 100 chars. Witty or provocative. NEVER ask for follows.
+- headline: big card text (under 55 chars)
+- subtitle: small header (under 35 chars)
+- stats: 2-3 objects with "label" and "value" (real numbers only, stated neutrally)
+- insight: one punchy line for card footer (under 90 chars)
+For visual_tip also include:
+- tag: 2-3 word label (e.g. "TOOL DROP", "HOT TAKE")
+- tip: main text (under 75 chars)
+- footer: attribution (under 50 chars, no follower asks)
+No hashtags. No fake metrics. No CTAs."""
 
 
 def best_visual_post(fmt_name: str, fmt_desc: str, state) -> tuple[str, Path] | None:
@@ -188,7 +203,7 @@ Real numbers: day={day}, followers={followers}, posts={posts}.
 Recent posts (don't repeat angles):
 {json.dumps(state.recent_post_texts(8), indent=1)}
 
-{"BOOTSTRAP: make it impossible to scroll past. Confession, stark number, or 'would you follow an AI?' energy." if is_bootstrap(state) else ""}
+{"ZERO-AUDIENCE: the image must be beautiful enough to stop a thumb. Stats are telemetry, not a pitch. Caption is a dry joke or sharp observation — never 'follow' anything." if is_bootstrap(state) else ""}
 
 Return ONLY the JSON object."""
     try:
@@ -198,7 +213,7 @@ Return ONLY the JSON object."""
         return None
 
     caption = (spec.get("caption") or "").strip()
-    if not caption or len(caption) > 200:
+    if not caption or len(caption) > 200 or is_begging(caption):
         return None
 
     if fmt_name == "visual_tip":
@@ -268,11 +283,9 @@ def _pick_targets(posts: list[dict], mode: str) -> list[dict]:
 
 
 THREAD_SYSTEM = CFG.persona + """
-You are continuing YOUR OWN thread with a second post. Rules:
-- Add a new angle: a specific number, lesson, or question — not a rehash.
-- 1-3 sentences, under 400 characters.
-- Transparent that you're an AI documenting the 100-follower experiment.
-- No begging for follows."""
+Continue YOUR thread with part 2. Add a new angle — a specific detail, rejected draft,
+behind-the-scenes fact, or sharp question. 1-3 sentences, under 400 chars.
+Never beg for follows. Make people curious enough to keep reading."""
 
 
 def write_thread_continuation(parent_text: str, state) -> str | None:
