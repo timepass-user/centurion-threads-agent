@@ -175,17 +175,78 @@ def write_reply(target_text: str, target_username: str) -> str | None:
 def pick_reply_targets(posts: list[dict]) -> list[dict]:
     """Use the judge model to pick which found posts are worth replying to:
     real people, on-topic, where a useful reply is possible."""
+    return _pick_targets(posts, "reply")
+
+
+def pick_repost_targets(posts: list[dict]) -> list[dict]:
+    """Posts worth a native repost — high-signal AI/growth content from real people."""
+    return _pick_targets(posts, "repost")
+
+
+def pick_quote_targets(posts: list[dict]) -> list[dict]:
+    """Posts worth quoting with our own commentary."""
+    return _pick_targets(posts, "quote")
+
+
+def _pick_targets(posts: list[dict], mode: str) -> list[dict]:
     if not posts:
         return []
     summary = [{"i": i, "user": p.get("username", ""), "text": (p.get("text") or "")[:300]}
                for i, p in enumerate(posts)]
-    user = ("From these Threads posts, return a JSON array of the indices (max 5) where a "
-            "genuinely useful, non-promotional reply about AI tools or audience-building is "
-            "possible. Exclude: brands/spam, sensitive personal topics, politics, posts that "
-            "are themselves replies or engagement bait. Return ONLY the JSON array.\n\n"
-            + json.dumps(summary, indent=1))
+    prompts = {
+        "reply": ("genuinely useful, non-promotional reply about AI tools or audience-building"),
+        "repost": ("worth resharing to followers interested in AI agents, building in public, or Threads growth"),
+        "quote": ("worth quoting with a sharp one-liner of commentary about AI or audience growth"),
+    }
+    user = (f"From these Threads posts, return a JSON array of the indices (max 3) that are "
+            f"{prompts[mode]}. Exclude: brands/spam, sensitive topics, politics, engagement bait. "
+            "Return ONLY the JSON array.\n\n" + json.dumps(summary, indent=1))
     try:
-        idxs = _extract_json(_ask(CFG.judge_model, "You curate reply opportunities.", user, max_tokens=100))
+        idxs = _extract_json(_ask(CFG.judge_model, "You curate engagement opportunities.", user, max_tokens=100))
         return [posts[i] for i in idxs if isinstance(i, int) and 0 <= i < len(posts)]
     except Exception:
         return []
+
+
+THREAD_SYSTEM = CFG.persona + """
+You are continuing YOUR OWN thread with a second post. Rules:
+- Add a new angle: a specific number, lesson, or question — not a rehash.
+- 1-3 sentences, under 400 characters.
+- Transparent that you're an AI documenting the 100-follower experiment.
+- No begging for follows."""
+
+
+def write_thread_continuation(parent_text: str, state) -> str | None:
+    user = f"""Your previous post in this thread:
+\"\"\"
+{parent_text}
+\"\"\"
+
+{experiment_context(state)}
+
+Write the next post in the thread. Return ONLY the post text, no quotes."""
+    out = _ask(CFG.model, THREAD_SYSTEM, user, max_tokens=250).strip()
+    if not out or len(out) > CFG.threads_char_limit:
+        return None
+    return out
+
+
+QUOTE_SYSTEM = CFG.persona + """
+You are QUOTING someone else's post with your own short commentary. Rules:
+- Lead with your take (1-2 sentences), then the quote speaks for itself.
+- Under 350 characters total.
+- Add insight about AI, building in public, or audience growth.
+- Never pitch your follower goal. Never ask for follows."""
+
+
+def write_quote_commentary(target_text: str, target_username: str) -> str | None:
+    user = f"""Post by @{target_username} you're quoting:
+\"\"\"
+{target_text}
+\"\"\"
+
+Write your quote-post commentary. Return ONLY the text."""
+    out = _ask(CFG.model, QUOTE_SYSTEM, user, max_tokens=200).strip()
+    if not out or len(out) > 350:
+        return None
+    return out

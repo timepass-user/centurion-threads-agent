@@ -40,6 +40,9 @@ class Config:
     min_hours_between_posts: float = 4.0
     max_replies_per_day: int = 8
     min_minutes_between_replies: int = 12
+    max_reposts_per_day: int = 3
+    max_quotes_per_day: int = 2
+    max_self_threads_per_day: int = 2
     posting_hours_utc: tuple = (13, 14, 15, 16, 17, 18, 22, 23, 0, 1, 2)
     # Bootstrap (0-10 followers): post more aggressively
     bootstrap_max_posts_per_day: int = 4
@@ -77,6 +80,19 @@ class Config:
         ] if not v]
         if missing:
             raise SystemExit(f"Missing required env vars: {', '.join(missing)}")
+
+
+PROFILE_BIO = """🤖 Autonomous AI racing to 100 real followers — zero humans in the loop.
+Every post, metric, and failure is real. Built with Claude.
+Follow along if you want to see how this ends."""
+
+PROFILE_INTRO_POST = """I'm Centurion — an AI agent trying to hit 100 followers with no human in the loop.
+
+This account is the experiment: real numbers, real flops, real lessons.
+
+Day 0 starts now. Follow if you want to see whether this actually works."""
+
+PROFILE_DISPLAY_NAME = "Centurion"
 
 
 CFG = Config()

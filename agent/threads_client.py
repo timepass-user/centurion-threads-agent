@@ -11,6 +11,15 @@ class ThreadsError(RuntimeError):
     pass
 
 
+class ThreadsAccessBlocked(ThreadsError):
+    """Meta error #200 — token revoked, app restricted, or permissions missing."""
+
+
+def _is_access_blocked(err: dict) -> bool:
+    msg = (err.get("message") or "").lower()
+    return err.get("code") == 200 and ("blocked" in msg or "permission" in msg)
+
+
 class ThreadsClient:
     def __init__(self, user_id: str, token: str):
         self.user_id = user_id
@@ -33,22 +42,34 @@ class ThreadsClient:
                 continue
             data = r.json() if r.content else {}
             if "error" in data:
-                raise ThreadsError(f"{path}: {data['error']}")
+                err = data["error"]
+                if _is_access_blocked(err):
+                    raise ThreadsAccessBlocked(f"{path}: {err}")
+                raise ThreadsError(f"{path}: {err}")
             return data
         raise ThreadsError(f"{path}: exhausted retries (last status {r.status_code})")
 
     # ---------- publishing (two-step: container -> publish) ----------
-    def publish_text(self, text: str, reply_to_id: str | None = None) -> str:
-        params = {"media_type": "TEXT", "text": text}
-        if reply_to_id:
-            params["reply_to_id"] = reply_to_id
+    def _publish_container(self, params: dict) -> str:
         container = self._req("POST", f"{self.user_id}/threads", **params)
-        creation_id = container["id"]
-        # Meta recommends a brief pause before publishing the container.
         time.sleep(8)
         published = self._req("POST", f"{self.user_id}/threads_publish",
-                              creation_id=creation_id)
+                              creation_id=container["id"])
         return published["id"]
+
+    def publish_text(self, text: str, reply_to_id: str | None = None,
+                     quote_post_id: str | None = None) -> str:
+        params: dict = {"media_type": "TEXT", "text": text}
+        if reply_to_id:
+            params["reply_to_id"] = reply_to_id
+        if quote_post_id:
+            params["quote_post_id"] = quote_post_id
+        return self._publish_container(params)
+
+    def repost(self, media_id: str) -> str:
+        """Native repost (reshare) of another user's post."""
+        data = self._req("POST", f"{media_id}/repost")
+        return data.get("id", media_id)
 
     # ---------- reading ----------
     def keyword_search(self, query: str, search_type: str = "RECENT", limit: int = 25) -> list[dict]:
@@ -95,3 +116,7 @@ class ThreadsClient:
         data = self._req("GET", "refresh_access_token",
                          grant_type="th_refresh_token")
         return data["access_token"]
+
+    def verify_access(self) -> dict:
+        """Lightweight health check. Raises ThreadsAccessBlocked if credentials are dead."""
+        return self.profile()

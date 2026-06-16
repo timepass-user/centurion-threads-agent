@@ -1,5 +1,4 @@
-"""Growth loop #2: join existing conversations.
-Keyword search (when API allows) + reply to comments on our own posts."""
+"""Growth loop: replies, self-threads, reposts, and quote-posts."""
 import random
 import time
 
@@ -10,17 +9,24 @@ from . import brain
 
 
 def run_engagement(state: State, tc: ThreadsClient, max_new_replies: int = 3):
+    sent = _run_replies(state, tc, max_new_replies)
+    sent += _self_thread(state, tc)
+    sent += _repost_and_quote(state, tc)
+    print(f"[engage] total {sent} engagement actions this cycle")
+
+
+def _run_replies(state: State, tc: ThreadsClient, max_new_replies: int) -> int:
     if state.replies_in_last(24) >= CFG.max_replies_per_day:
         print("[engage] daily reply cap reached")
-        return
+        return 0
     if time.time() - state.last_reply_time() < CFG.min_minutes_between_replies * 60:
         print("[engage] too soon since last reply")
-        return
+        return 0
 
     sent = _reply_via_keyword_search(state, tc, max_new_replies)
     if sent < max_new_replies:
         sent += _reply_on_own_posts(state, tc, max_new_replies - sent)
-    print(f"[engage] total {sent} replies this cycle")
+    return sent
 
 
 def _send_replies(state: State, tc: ThreadsClient, targets: list[dict], max_n: int) -> int:
@@ -94,3 +100,97 @@ def _reply_on_own_posts(state: State, tc: ThreadsClient, max_new_replies: int) -
 
     print(f"[engage] own-posts: {len(candidates)} unreplied comments")
     return _send_replies(state, tc, candidates, max_new_replies)
+
+
+def _self_thread(state: State, tc: ThreadsClient) -> int:
+    """Continue our own thread — boosts depth without keyword search."""
+    if state.engagements_in_last("self_thread", 24) >= CFG.max_self_threads_per_day:
+        return 0
+    if time.time() - state.last_engagement_time("self_thread") < 3600:
+        return 0
+
+    try:
+        posts = tc.my_recent_posts(limit=8)
+    except Exception as e:
+        print(f"[engage] self-thread fetch failed: {e}")
+        return 0
+
+    for post in posts:
+        if state.engaged("self_thread", post["id"]):
+            continue
+        if not post.get("text") or len(post["text"]) < 30:
+            continue
+        continuation = brain.write_thread_continuation(post["text"], state)
+        if not continuation:
+            continue
+        try:
+            mid = tc.publish_text(continuation, reply_to_id=post["id"])
+        except Exception as e:
+            print(f"[engage] self-thread publish failed: {e}")
+            continue
+        state.record_engagement("self_thread", mid, post["id"], continuation)
+        print(f"[engage] self-thread on {post['id']}: {continuation[:80]!r}")
+        return 1
+    return 0
+
+
+def _discover_posts(state: State, tc: ThreadsClient) -> list[dict]:
+    keywords = random.sample(CFG.search_keywords, k=min(2, len(CFG.search_keywords)))
+    found: list[dict] = []
+    for kw in keywords:
+        try:
+            found.extend(tc.keyword_search(kw, search_type="TOP", limit=12))
+        except Exception as e:
+            print(f"[engage] search failed for {kw!r}: {e}")
+
+    fresh: list[dict] = []
+    for p in found:
+        if p.get("is_reply"):
+            continue
+        if not p.get("text") or len(p["text"]) < 50:
+            continue
+        if state.replied_to(p["id"]) or state.engaged("repost", p["id"]) or state.engaged("quote", p["id"]):
+            continue
+        if state.replied_to_user_recently(p.get("username", ""), hours=48):
+            continue
+        fresh.append(p)
+    return fresh
+
+
+def _repost_and_quote(state: State, tc: ThreadsClient) -> int:
+    """Native reposts and quote-posts when keyword search is available."""
+    sent = 0
+    fresh = _discover_posts(state, tc)
+    if not fresh:
+        return 0
+
+    if state.engagements_in_last("quote", 24) < CFG.max_quotes_per_day:
+        for t in brain.pick_quote_targets(fresh)[:1]:
+            commentary = brain.write_quote_commentary(t["text"], t.get("username", "user"))
+            if not commentary:
+                continue
+            try:
+                mid = tc.publish_text(commentary, quote_post_id=t["id"])
+            except Exception as e:
+                print(f"[engage] quote failed: {e}")
+                continue
+            state.record_engagement("quote", mid, t["id"], commentary)
+            print(f"[engage] quoted @{t.get('username')}: {commentary[:80]!r}")
+            sent += 1
+            time.sleep(random.uniform(45, 90))
+            break
+
+    if state.engagements_in_last("repost", 24) < CFG.max_reposts_per_day:
+        for t in brain.pick_repost_targets(fresh)[:1]:
+            if state.engaged("repost", t["id"]):
+                continue
+            try:
+                result = tc.repost(t["id"])
+            except Exception as e:
+                print(f"[engage] repost failed: {e}")
+                continue
+            state.record_engagement("repost", result, t["id"])
+            print(f"[engage] reposted @{t.get('username')}: {t['text'][:60]!r}")
+            sent += 1
+
+    return sent

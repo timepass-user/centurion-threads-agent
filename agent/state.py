@@ -36,9 +36,12 @@ CREATE TABLE IF NOT EXISTS kv (
     k TEXT PRIMARY KEY,
     v TEXT
 );
-CREATE TABLE IF NOT EXISTS follower_log (
-    ts        REAL PRIMARY KEY,
-    followers INTEGER
+CREATE TABLE IF NOT EXISTS sent_engagements (
+    action          TEXT NOT NULL,
+    media_id        TEXT PRIMARY KEY,
+    target_id       TEXT,
+    text            TEXT,
+    sent_at         REAL NOT NULL
 );
 """
 
@@ -139,6 +142,39 @@ class State:
 
     def last_reply_time(self) -> float:
         row = self.conn.execute("SELECT MAX(sent_at) m FROM sent_replies").fetchone()
+        return row["m"] or 0.0
+
+    # ---------- engagements (reposts, quotes, self-threads) ----------
+    def record_engagement(self, action: str, media_id: str, target_id: str = "",
+                          text: str = ""):
+        self.conn.execute(
+            "INSERT OR IGNORE INTO sent_engagements VALUES (?,?,?,?,?)",
+            (action, media_id, target_id, text, time.time()),
+        )
+        self.conn.commit()
+
+    def engaged(self, action: str, target_id: str) -> bool:
+        return self.conn.execute(
+            "SELECT 1 FROM sent_engagements WHERE action=? AND target_id=?",
+            (action, target_id),
+        ).fetchone() is not None
+
+    def engagements_in_last(self, action: str, hours: float) -> int:
+        cutoff = time.time() - hours * 3600
+        return self.conn.execute(
+            "SELECT COUNT(*) c FROM sent_engagements WHERE action=? AND sent_at > ?",
+            (action, cutoff),
+        ).fetchone()["c"]
+
+    def last_engagement_time(self, action: str | None = None) -> float:
+        if action:
+            row = self.conn.execute(
+                "SELECT MAX(sent_at) m FROM sent_engagements WHERE action=?", (action,)
+            ).fetchone()
+        else:
+            row = self.conn.execute(
+                "SELECT MAX(sent_at) m FROM sent_engagements"
+            ).fetchone()
         return row["m"] or 0.0
 
     # ---------- bandit ----------

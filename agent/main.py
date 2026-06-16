@@ -16,8 +16,36 @@ from datetime import datetime, timezone
 
 from .config import CFG
 from .state import State
-from .threads_client import ThreadsClient
+from .threads_client import ThreadsClient, ThreadsAccessBlocked
 from . import analytics, brain, engage
+
+
+ACCESS_BLOCKED_HELP = """
+[main] THREADS API ACCESS BLOCKED (error #200)
+
+The access token is invalid, revoked, or the app lost permission.
+Token refresh cannot fix this — you need a new OAuth grant.
+
+Fix (15 min):
+  1. Meta Developer Console → Home → Alerts
+     Clear any "API access restricted/blocked" notices.
+  2. Re-authorize @influencer.bot:
+       cd threads-agent
+       python scripts/bootstrap_oauth.py THREADS_APP_ID THREADS_APP_SECRET
+     (Use Threads App ID from Threads API → Settings, NOT the parent Meta App ID.)
+  3. Update GitHub secret:
+       gh secret set THREADS_ACCESS_TOKEN --body "NEW_TOKEN" -R timepass-user/centurion-threads-agent
+  4. Verify locally:
+       python scripts/check_token.py
+
+See SETUP_TESTER.md and scripts/check_token.py for details.
+"""
+
+
+def _exit_on_access_blocked(mode: str):
+    print(ACCESS_BLOCKED_HELP)
+    # Don't fail CI on scheduled cycles — avoids hourly red builds while token is dead.
+    raise SystemExit(0 if mode == "cycle" else 1)
 
 
 def _posting_limits(state: State) -> tuple[tuple, int, float]:
@@ -51,7 +79,10 @@ def do_post(state: State, tc: ThreadsClient):
     if text is None:
         print("[main] no candidate cleared the quality bar; skipping this slot")
         return
-    media_id = tc.publish_text(text)
+    try:
+        media_id = tc.publish_text(text)
+    except ThreadsAccessBlocked:
+        raise
     state.record_post(media_id, text, fmt_name)
     print(f"[main] published ({fmt_name}) {media_id}: {text[:100]!r}")
 
@@ -72,14 +103,27 @@ def check_win(state: State, tc: ThreadsClient):
             print("[main] 🏁 GOAL REACHED — victory post published")
 
 
-def cycle(state: State, tc: ThreadsClient):
+def cycle(state: State, tc: ThreadsClient, mode: str = "cycle"):
     if state.get("started_at") is None:
         state.set("started_at", time.time())
+    try:
+        tc.verify_access()
+    except ThreadsAccessBlocked:
+        _exit_on_access_blocked(mode)
     analytics.collect_metrics(state, tc)
     if _should_post(state):
-        do_post(state, tc)
-    engage.run_engagement(state, tc)
-    check_win(state, tc)
+        try:
+            do_post(state, tc)
+        except ThreadsAccessBlocked:
+            _exit_on_access_blocked(mode)
+    try:
+        engage.run_engagement(state, tc)
+    except ThreadsAccessBlocked:
+        _exit_on_access_blocked(mode)
+    try:
+        check_win(state, tc)
+    except ThreadsAccessBlocked:
+        _exit_on_access_blocked(mode)
     print("\n" + analytics.status_report(state))
 
 
@@ -90,10 +134,18 @@ def main():
     tc = ThreadsClient(CFG.threads_user_id, CFG.threads_token)
 
     if mode == "cycle":
-        cycle(state, tc)
+        cycle(state, tc, mode)
     elif mode == "post":
+        try:
+            tc.verify_access()
+        except ThreadsAccessBlocked:
+            _exit_on_access_blocked(mode)
         do_post(state, tc)
     elif mode == "engage":
+        try:
+            tc.verify_access()
+        except ThreadsAccessBlocked:
+            _exit_on_access_blocked(mode)
         engage.run_engagement(state, tc)
     elif mode == "collect":
         analytics.collect_metrics(state, tc)
@@ -102,6 +154,16 @@ def main():
     elif mode == "refresh-token":
         new = tc.refresh_token()
         print(new)  # CI captures stdout and rotates the secret
+    elif mode == "setup-profile":
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "setup_profile", root / "scripts" / "setup_profile.py"
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.main()
     elif mode == "daemon":
         from .daemon import run_daemon
         run_daemon(state, tc)
