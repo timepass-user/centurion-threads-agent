@@ -13,6 +13,11 @@ from agent.threads_client import ThreadsClient, ThreadsAccessBlocked, ThreadsErr
 
 def main():
     CFG.validate()
+    if not CFG.threads_token or len(CFG.threads_token) < 50:
+        print("  FAIL token: TOKEN MISSING OR TRUNCATED in .env / GitHub secrets")
+        print("       Run: python scripts/reauth.py")
+        sys.exit(1)
+
     tc = ThreadsClient(CFG.threads_user_id, CFG.threads_token)
     print("Checking Threads API access...\n")
 
@@ -41,7 +46,7 @@ def main():
 
     print("TOKEN IS DEAD. Recovery steps:")
     print("  1. https://developers.facebook.com/ → your app → Home → Alerts")
-    print("  2. python scripts/bootstrap_oauth.py THREADS_APP_ID THREADS_APP_SECRET")
+    print("  2. python scripts/reauth.py")
     print("  3. gh secret set THREADS_ACCESS_TOKEN --body 'NEW_TOKEN' -R timepass-user/centurion-threads-agent")
     sys.exit(1)
 
