@@ -7,6 +7,7 @@
    automatic explore/explore-less without hand-tuned epsilon."""
 import random
 import statistics
+import time
 
 from .config import CFG
 from .state import State
@@ -20,6 +21,21 @@ def current_followers(state: State) -> int:
 
 def is_bootstrap(state: State) -> bool:
     return current_followers(state) < 10
+
+
+def is_visual_format(fmt_name: str) -> bool:
+    return fmt_name.startswith("visual_")
+
+
+def visual_post_ratio(state: State) -> float:
+    rows = state.conn.execute(
+        "SELECT fmt FROM posts WHERE posted_at > ?",
+        (time.time() - 86400,),
+    ).fetchall()
+    if not rows:
+        return 0.0
+    visual = sum(1 for r in rows if is_visual_format(r["fmt"]))
+    return visual / len(rows)
 
 
 def collect_metrics(state: State, tc: ThreadsClient):
@@ -49,14 +65,22 @@ def collect_metrics(state: State, tc: ThreadsClient):
 
 
 def choose_format(state: State) -> tuple[str, str]:
-    """Thompson sampling; bootstrap phase boosts engagement-driving formats."""
+    """Thompson sampling; bootstrap phase boosts visual + engagement formats."""
+    ratio = visual_post_ratio(state)
+    need_visual = is_bootstrap(state) and ratio < CFG.bootstrap_visual_ratio
+
     boost = {
+        "visual_dashboard": 3.5 if need_visual else 2.0,
+        "visual_tip": 3.2 if need_visual else 1.8,
         "progress_report": 2.0,
         "question_post": 1.8,
         "behind_the_scenes": 1.4,
         "hot_take": 1.2,
         "tactical_tip": 1.0,
-    } if is_bootstrap(state) else {}
+    } if is_bootstrap(state) else {
+        "visual_dashboard": 1.5,
+        "visual_tip": 1.3,
+    }
 
     best, best_sample = None, -1.0
     for fmt_name, fmt_desc in CFG.formats:
@@ -65,7 +89,8 @@ def choose_format(state: State) -> tuple[str, str]:
         if sample > best_sample:
             best, best_sample = (fmt_name, fmt_desc), sample
     phase = "bootstrap" if is_bootstrap(state) else "growth"
-    print(f"[bandit] chose format {best[0]} (sampled {best_sample:.3f}, phase={phase})")
+    print(f"[bandit] chose format {best[0]} (sampled {best_sample:.3f}, phase={phase}, "
+          f"visual_ratio={ratio:.0%})")
     return best
 
 

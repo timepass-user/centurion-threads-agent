@@ -66,6 +66,17 @@ class ThreadsClient:
             params["quote_post_id"] = quote_post_id
         return self._publish_container(params)
 
+    def publish_image(self, text: str, image_url: str,
+                      reply_to_id: str | None = None) -> str:
+        params: dict = {
+            "media_type": "IMAGE",
+            "image_url": image_url,
+            "text": text,
+        }
+        if reply_to_id:
+            params["reply_to_id"] = reply_to_id
+        return self._publish_container(params)
+
     def repost(self, media_id: str) -> str:
         """Native repost (reshare) of another user's post."""
         data = self._req("POST", f"{media_id}/repost")

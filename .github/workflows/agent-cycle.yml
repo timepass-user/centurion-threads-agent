@@ -34,13 +34,15 @@ jobs:
           THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
           THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: python -m agent.main ${{ github.event.inputs.mode || 'cycle' }}
 
       - name: Persist state (the agent's memory)
         run: |
           git config user.name "centurion-agent"
           git config user.email "agent@users.noreply.github.com"
-          git add state.sqlite || true
+          git add state.sqlite media/posts/*.png 2>/dev/null || true
           git diff --cached --quiet || git commit -m "state: $(date -u +%FT%TZ)"
           git pull --rebase origin main || true
           git push

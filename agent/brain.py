@@ -5,6 +5,7 @@ systematically over-rates it."""
 import json
 import re
 import time
+from pathlib import Path
 
 import anthropic
 import feedparser
@@ -139,7 +140,9 @@ def judge(candidates: list[str]) -> list[tuple[str, float]]:
 
 def best_post(fmt_name: str, fmt_desc: str, state, min_score: float = 6.5) -> str | None:
     """Generate -> judge -> pick. Returns None if nothing clears the bar."""
-    from .analytics import is_bootstrap
+    from .analytics import is_bootstrap, is_visual_format
+    if is_visual_format(fmt_name):
+        return None  # visual posts use best_visual_post instead
     if is_bootstrap(state):
         min_score = 7.0  # higher bar, but better hooks in bootstrap prompts
     cands = generate_candidates(fmt_name, fmt_desc, state)
@@ -149,6 +152,62 @@ def best_post(fmt_name: str, fmt_desc: str, state, min_score: float = 6.5) -> st
     text, score = ranked[0]
     print(f"[brain] best candidate scored {score}: {text[:80]!r}")
     return text if score >= min_score else None
+
+
+VISUAL_SYSTEM = CFG.persona + """
+You plan IMAGE posts for Threads. The image is a bold stat card; the caption is short.
+Return ONLY valid JSON with these fields:
+- caption: under 120 chars, hooky first line, optional soft CTA
+- headline: big text on card (under 60 chars)
+- subtitle: small header (under 40 chars)
+- stats: array of 2-3 objects with "label" and "value" (real numbers only)
+- insight: one sentence lesson for the card footer (under 100 chars)
+For visual_tip format also include:
+- tag: 2-3 word category label
+- tip: the main tip text (under 80 chars)
+- footer: small attribution line (under 60 chars)
+No hashtags. No fake metrics."""
+
+
+def best_visual_post(fmt_name: str, fmt_desc: str, state) -> tuple[str, Path] | None:
+    """Generate visual spec -> render PNG -> return (caption, path)."""
+    from pathlib import Path
+    from .analytics import current_followers, is_bootstrap
+    from . import visual
+
+    followers = current_followers(state)
+    posts = len(state.recent_post_texts(999))
+    started = state.get("started_at")
+    day = int((time.time() - started) / 86400) if started else 0
+
+    user = f"""{experiment_context(state)}
+
+Format: {fmt_name} — {fmt_desc}
+
+Real numbers: day={day}, followers={followers}, posts={posts}.
+Recent posts (don't repeat angles):
+{json.dumps(state.recent_post_texts(8), indent=1)}
+
+{"BOOTSTRAP: make it impossible to scroll past. Confession, stark number, or 'would you follow an AI?' energy." if is_bootstrap(state) else ""}
+
+Return ONLY the JSON object."""
+    try:
+        spec = _extract_json(_ask(CFG.model, VISUAL_SYSTEM, user, max_tokens=600))
+    except Exception as e:
+        print(f"[brain] visual spec failed: {e}")
+        return None
+
+    caption = (spec.get("caption") or "").strip()
+    if not caption or len(caption) > 200:
+        return None
+
+    if fmt_name == "visual_tip":
+        path = visual.render_tip_card(spec)
+    else:
+        path = visual.render_card(spec)
+
+    print(f"[brain] visual post ready: {caption[:80]!r}")
+    return caption, path
 
 
 # ---------------------------------------------------------------- replies

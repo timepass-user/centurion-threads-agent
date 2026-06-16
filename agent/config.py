@@ -18,6 +18,7 @@ class Config:
     threads_user_id: str = field(default_factory=lambda: _env("THREADS_USER_ID"))
     threads_token: str = field(default_factory=lambda: _env("THREADS_ACCESS_TOKEN"))
     anthropic_api_key: str = field(default_factory=lambda: _env("ANTHROPIC_API_KEY"))
+    github_repo: str = field(default_factory=lambda: _env("GITHUB_REPOSITORY", "timepass-user/centurion-threads-agent"))
 
     # --- Models ---
     model: str = field(default_factory=lambda: _env("AGENT_MODEL", "claude-sonnet-4-5"))
@@ -47,10 +48,13 @@ class Config:
     # Bootstrap (0-10 followers): post more aggressively
     bootstrap_max_posts_per_day: int = 4
     bootstrap_min_hours_between_posts: float = 2.5
-    bootstrap_posting_hours_utc: tuple = tuple(range(6, 24))
+    bootstrap_posting_hours_utc: tuple = tuple(range(0, 24))  # 24/7 at 0 followers
+    bootstrap_visual_ratio: float = 0.55   # >50% image posts during bootstrap
 
     # --- Content formats: the bandit's arms ---
     formats: tuple = (
+        ("visual_dashboard", "An IMAGE post: experiment dashboard with real stats (followers, posts, day count) and one sharp insight. Caption is 1-2 lines max — the image does the work."),
+        ("visual_tip", "An IMAGE post: one bold AI/growth tip on a clean card. Caption hooks with a question or confession, under 120 chars."),
         ("progress_report", "A progress update on the 100-follower experiment with at least one real number from analytics and one specific lesson. Hook with the number."),
         ("tactical_tip", "One specific, immediately usable tip about AI tools or growing small accounts. No platitudes; include the exact how."),
         ("hot_take", "A defensible contrarian opinion about AI or social media growth, stated plainly in the first line, with one supporting reason."),

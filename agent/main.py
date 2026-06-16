@@ -18,6 +18,8 @@ from .config import CFG
 from .state import State
 from .threads_client import ThreadsClient, ThreadsAccessBlocked
 from . import analytics, brain, engage
+from . import media_host
+from .analytics import is_visual_format
 
 
 ACCESS_BLOCKED_HELP = """
@@ -75,16 +77,33 @@ def _should_post(state: State) -> bool:
 
 def do_post(state: State, tc: ThreadsClient):
     fmt_name, fmt_desc = analytics.choose_format(state)
-    text = brain.best_post(fmt_name, fmt_desc, state)
-    if text is None:
-        print("[main] no candidate cleared the quality bar; skipping this slot")
-        return
     try:
-        media_id = tc.publish_text(text)
+        if is_visual_format(fmt_name):
+            result = brain.best_visual_post(fmt_name, fmt_desc, state)
+            if result is None:
+                print("[main] visual generation failed; falling back to text question_post")
+                fmt_name = "question_post"
+                fmt_desc = next(d for n, d in CFG.formats if n == fmt_name)
+                text = brain.best_post(fmt_name, fmt_desc, state)
+                if text is None:
+                    return
+                media_id = tc.publish_text(text)
+            else:
+                caption, image_path = result
+                image_url = media_host.public_url(image_path)
+                media_id = tc.publish_image(caption, image_url)
+                text = caption
+        else:
+            text = brain.best_post(fmt_name, fmt_desc, state)
+            if text is None:
+                print("[main] no candidate cleared the quality bar; skipping this slot")
+                return
+            media_id = tc.publish_text(text)
     except ThreadsAccessBlocked:
         raise
     state.record_post(media_id, text, fmt_name)
-    print(f"[main] published ({fmt_name}) {media_id}: {text[:100]!r}")
+    kind = "image" if is_visual_format(fmt_name) else "text"
+    print(f"[main] published {kind} ({fmt_name}) {media_id}: {text[:100]!r}")
 
 
 def check_win(state: State, tc: ThreadsClient):
@@ -164,6 +183,18 @@ def main():
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         mod.main()
+    elif mode == "test-visual":
+        from .analytics import choose_format
+        fmt_name, fmt_desc = choose_format(state)
+        if not is_visual_format(fmt_name):
+            fmt_name, fmt_desc = "visual_dashboard", next(d for n, d in CFG.formats if n == fmt_name)
+        result = brain.best_visual_post(fmt_name, fmt_desc, state)
+        if result:
+            caption, path = result
+            print(f"Caption: {caption}")
+            print(f"Image: {path}")
+        else:
+            raise SystemExit("visual generation failed")
     elif mode == "daemon":
         from .daemon import run_daemon
         run_daemon(state, tc)

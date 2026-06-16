@@ -118,7 +118,7 @@ def _self_thread(state: State, tc: ThreadsClient) -> int:
     for post in posts:
         if state.engaged("self_thread", post["id"]):
             continue
-        if not post.get("text") or len(post["text"]) < 30:
+        if not post.get("text") or len(post["text"]) < 20:
             continue
         continuation = brain.write_thread_continuation(post["text"], state)
         if not continuation:
