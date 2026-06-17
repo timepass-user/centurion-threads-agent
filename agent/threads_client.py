@@ -15,9 +15,18 @@ class ThreadsAccessBlocked(ThreadsError):
     """Meta error #200 — token revoked, app restricted, or permissions missing."""
 
 
+class ThreadsTokenExpired(ThreadsAccessBlocked):
+    """Meta error #190 — short-lived token expired; re-OAuth required."""
+
+
 def _is_access_blocked(err: dict) -> bool:
     msg = (err.get("message") or "").lower()
     return err.get("code") == 200 and ("blocked" in msg or "permission" in msg)
+
+
+def _is_token_expired(err: dict) -> bool:
+    msg = (err.get("message") or "").lower()
+    return err.get("code") == 190 and ("expired" in msg or "session" in msg)
 
 
 class ThreadsClient:
@@ -45,6 +54,8 @@ class ThreadsClient:
                 err = data["error"]
                 if _is_access_blocked(err):
                     raise ThreadsAccessBlocked(f"{path}: {err}")
+                if _is_token_expired(err):
+                    raise ThreadsTokenExpired(f"{path}: {err}")
                 raise ThreadsError(f"{path}: {err}")
             return data
         raise ThreadsError(f"{path}: exhausted retries (last status {r.status_code})")

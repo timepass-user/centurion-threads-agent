@@ -56,10 +56,11 @@ def exchange_code(app_id: str, app_secret: str, code: str) -> tuple[str, str]:
             "access_token": short_token,
         }, timeout=30).json()
         if "access_token" in r2:
-            print(f"[oauth] long-lived token via {url}")
+            print(f"[oauth] long-lived token via {url} (60-day)")
             return user_id, r2["access_token"]
 
     print(f"[oauth] long-lived exchange failed ({r2}); using short-lived token (~1hr)")
+    print("[oauth] WARNING: re-auth within 1 hour or fix Meta app for long-lived tokens.")
     return user_id, short_token
 
 

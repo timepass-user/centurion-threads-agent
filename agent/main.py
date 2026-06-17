@@ -23,29 +23,33 @@ from .analytics import is_visual_format
 
 
 ACCESS_BLOCKED_HELP = """
-[main] THREADS API ACCESS BLOCKED (error #200)
+[main] THREADS TOKEN INVALID OR EXPIRED
 
-The access token is invalid, revoked, or the app lost permission.
-Token refresh cannot fix this — you need a new OAuth grant.
+Short-lived tokens last ~1 hour. Long-lived tokens last ~60 days.
+You need a fresh OAuth grant and must update the GitHub secret.
 
-Fix (15 min):
-  1. Meta Developer Console → Home → Alerts
-     Clear any "API access restricted/blocked" notices.
-  2. Re-authorize @influencer.bot:
-       python scripts/reauth.py YOUR_THREADS_APP_SECRET
-  3. Update GitHub secret:
-       gh secret set THREADS_ACCESS_TOKEN --body "NEW_TOKEN" -R timepass-user/centurion-threads-agent
-  4. Verify locally:
-       python scripts/check_token.py
-
-See SETUP_TESTER.md and scripts/check_token.py for details.
+Fix (2 min):
+  1. Open OAuth URL (log in as @influencer.bot, approve all permissions)
+  2. python scripts/reauth.py "PASTE_CALLBACK_URL"
+  3. gh secret set THREADS_ACCESS_TOKEN --body "$(grep THREADS_ACCESS_TOKEN .env | cut -d= -f2-)" -R timepass-user/centurion-threads-agent
+  4. python scripts/check_token.py
 """
 
 
-def _exit_on_access_blocked(mode: str):
+def _exit_on_auth_failure(mode: str):
     print(ACCESS_BLOCKED_HELP)
-    # Don't fail CI on scheduled cycles — avoids hourly red builds while token is dead.
+    print("\nOAuth URL:")
+    from pathlib import Path
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    from oauth_common import auth_url
+    import os
+    print(auth_url(os.environ.get("THREADS_APP_ID", "1526251002514059")))
     raise SystemExit(0 if mode == "cycle" else 1)
+
+
+def _exit_on_access_blocked(mode: str):
+    _exit_on_auth_failure(mode)
 
 
 def _posting_limits(state: State) -> tuple[tuple, int, float]:
