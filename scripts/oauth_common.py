@@ -31,7 +31,7 @@ def auth_url(app_id: str) -> str:
 
 
 def exchange_code(app_id: str, app_secret: str, code: str) -> tuple[str, str]:
-    """Return (user_id, long_lived_token)."""
+    """Return (user_id, access_token). Prefers long-lived; falls back to short-lived."""
     code = code.strip().rstrip("#_")
     r = requests.post("https://graph.threads.net/oauth/access_token", data={
         "client_id": app_id,
@@ -46,16 +46,21 @@ def exchange_code(app_id: str, app_secret: str, code: str) -> tuple[str, str]:
 
     short_token, user_id = r["access_token"], str(r["user_id"])
 
-    r2 = requests.get("https://graph.threads.net/access_token", params={
-        "grant_type": "th_exchange_token",
-        "client_secret": app_secret,
-        "access_token": short_token,
-    }, timeout=30).json()
+    for url in (
+        "https://graph.threads.net/v1.0/access_token",
+        "https://graph.threads.net/access_token",
+    ):
+        r2 = requests.get(url, params={
+            "grant_type": "th_exchange_token",
+            "client_secret": app_secret,
+            "access_token": short_token,
+        }, timeout=30).json()
+        if "access_token" in r2:
+            print(f"[oauth] long-lived token via {url}")
+            return user_id, r2["access_token"]
 
-    if "access_token" not in r2:
-        raise RuntimeError(f"Long-lived token exchange failed: {r2}")
-
-    return user_id, r2["access_token"]
+    print(f"[oauth] long-lived exchange failed ({r2}); using short-lived token (~1hr)")
+    return user_id, short_token
 
 
 def update_env(user_id: str, token: str) -> None:
